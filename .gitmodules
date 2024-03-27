@@ -1,3 +1,6 @@
 [submodule "patch_antenna/patch_antenna_calculator"]
 	path = patch_antenna/patch_antenna_calculator
 	url = git@github.com:oskarvh/patch_antenna_calculator.git
+[submodule "gerber2ems"]
+	path = gerber2ems
+	url = git@github.com:antmicro/gerber2ems.git

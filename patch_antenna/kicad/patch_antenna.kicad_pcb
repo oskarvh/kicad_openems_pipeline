@@ -91,7 +91,7 @@
 		)
 		(fill solid)
 		(layer "F.Cu")
-		(uuid "54e2a822-d8fe-4c89-9b04-96a58c764fa5")
+		(uuid "8145d0dc-3744-44d4-b920-d5edf7db78c4")
 	)
 	(gr_rect
 		(start 98.55935 118.891552)
@@ -102,7 +102,7 @@
 		)
 		(fill solid)
 		(layer "F.Cu")
-		(uuid "5aa1cc0c-ffb6-407e-912c-cb08bad47682")
+		(uuid "d48fe0b2-22c1-47a6-bf33-ead5e30bc748")
 	)
 	(gr_rect
 		(start 76.91834 81.108447)
@@ -113,7 +113,7 @@
 		)
 		(fill solid)
 		(layer "B.Cu")
-		(uuid "0164ca20-4a15-420a-bbe9-330cb88700c7")
+		(uuid "b72fa364-c8b6-46a7-a74e-d387cde1976d")
 	)
 	(gr_rect
 		(start 80.71834 84.908447)
@@ -124,7 +124,7 @@
 		)
 		(fill solid)
 		(layer "F.Mask")
-		(uuid "7084e4b7-598e-4c6f-9524-a628dbbdd942")
+		(uuid "346985d4-6e85-41b2-93ea-01b2f557160f")
 	)
 	(gr_rect
 		(start 97.55935 118.891552)
@@ -135,7 +135,7 @@
 		)
 		(fill solid)
 		(layer "F.Mask")
-		(uuid "b202c2c7-9163-465c-ac98-9f9309220e39")
+		(uuid "ed63dd76-67d2-4327-90dc-24bf8ba56da6")
 	)
 	(gr_rect
 		(start 76.91834 81.108447)
@@ -146,6 +146,6 @@
 		)
 		(fill none)
 		(layer "Edge.Cuts")
-		(uuid "bd76c73e-c4dd-472f-a961-9f875e925219")
+		(uuid "0f0e21a6-c872-48fd-a512-78a6ad05ba19")
 	)
 )

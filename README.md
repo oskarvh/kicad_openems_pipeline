@@ -1,15 +1,64 @@
 # kicad_openems_pipeline
 Attempting to create a pipeline for RF projects using KiCAD and OpenEMS
 
-# Install dependencies
-These are the dependencies I have. 
 
+# 1. Install
+
+These steps should make it possible to get this up and running. 
+
+## 1.1. Clone this repo
+
+Clone this repo
+```
+# Clone this repo:
+git clone git@github.com:oskarvh/kicad_openems_pipeline.git
+
+# cd into repo
+cd kicad_openems_pipeline
+
+# Update submodules 
+git submodule update --recursive
+```
+
+## 1.2. Install dependencies
+
+There are multiple dependencies for this repo. These are 
 - Kicad 8
 - OpenEMS v.0.0.36 (Installed from https://docs.openems.de/install.html#linux, with python interface). 
 
-For OpenEMS, remember to also update the underlying Python packages, such as Numpy, Matplotlib and more. 
+Moreover, the following dependencies are required (some might be covered by the OpenEMS install above). 
+```
+# Install OpenEMS deps
+sudo apt-get install build-essential cmake git libhdf5-dev libvtk7-dev libboost-all-dev libcgal-dev libtinyxml-dev qtbase5-dev libvtk7-qt-dev
 
-- Install this repos submodules (`git submodule update --recursive`)
+# Install deps for python interface
+sudo pip install numpy matplotlib cython h5py
+
+# Optional: Update pip in case stuff is outdated:
+sudo python3 -m pip install --upgrade pip
+
+# Install python deps:
+sudo python3 -m pip install vtk scipy matplotlib h5py
+
+```
+
+## 1.3. Install gerber2ems
+This project uses Antmicro's `gerber2ems` module to convert gerber files to a format that can be opened by OpenEMS. ASsuming the submodules have been fetched, the package needs to be installed:
+```
+# cd into gerber2ems
+cd <path to where you cloned the repo>/gerber2ems
+
+# install the package
+pip install .
+```
+
+## 1.2. Test install
+A quick way to check that the installation worked is to run through the patch antenna generation and simulation, as that doesn't require any input: 
+
+```
+cd <path to where you cloned the repo>/kicad_openems_pipeline
+python3 patch_antenna/create_patch.py
+```
 
 # Guide
 See the writeup at aboutbytes.com for more details. Article not up yet, but will be at some point. 
@@ -39,3 +88,4 @@ I've made another script to roughly calculate the antenna parameters for a two l
 For convencience, that repo is imported into the `patch_antenna` as a submodule. This calculator is far from ideal, but I've found myself looking through old notes to create a similar patch over and over again, so this creates a nice baseline to work from. 
 
 `python3 patch_antenna/create_patch.py` creates a KiCAD PCB file with a patch featuring an inset feedline calculated for 50 ohm (not guaranteed).
+
