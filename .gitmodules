@@ -1,0 +1,3 @@
+[submodule "patch_antenna/patch_antenna_calculator"]
+	path = patch_antenna/patch_antenna_calculator
+	url = git@github.com:oskarvh/patch_antenna_calculator.git
