@@ -7,13 +7,19 @@ submodule in this dir.
 # Standard libs
 import os
 import tempfile
+import json
+import shutil
+import sys
 
 # Extended libs
 import pcbnew
 from CSXCAD  import ContinuousStructure
 from openEMS import openEMS
 from openEMS.physical_constants import *
-import gerber2ems
+from gerber2ems.simulation import Simulation
+from gerber2ems.postprocess import Postprocesor
+from gerber2ems.config import Config
+import gerber2ems.importer as importer
 
 Sim_Path = os.path.join(tempfile.gettempdir(), 'Simp_Patch')
 
@@ -192,6 +198,93 @@ def create_kicad_board(antenna, pcb, center_x_mm, center_y_mm):
     feedline_mask.SetLayer(pcbnew.F_Mask)
     pcb.Add(feedline_mask)
 
+def fromUTF8Text( afilename ):
+    if sys.version_info < (3, 0):
+        return afilename.encode()
+    else:
+        return afilename
+
+def export_gerbers(kicad_pcb_filename, output_dir, stackup_filename, project_name):
+    """
+    Function to export gerber files from KiCAD pcbNew board.
+    
+    :param pcb: <pcbnew.BOARD> Board object to be exported
+    :param output_dir: <str> String pointing to where the files should be exported. 
+    """
+    # In order to get the naming convention correct, we need to open 
+    # the board from source:
+    pcb = pcbnew.LoadBoard(kicad_pcb_filename)
+
+    # Create the plot controller object based of the pcb, and get the plot options
+    plot_controller = pcbnew.PLOT_CONTROLLER(pcb)
+    plot_options = plot_controller.GetPlotOptions()
+
+    # Set the output directory based on the argument
+    plot_options.SetOutputDirectory(output_dir)
+
+    # Set some important plot options (see pcb_plot_params.h):
+    plot_options.SetPlotFrameRef(False)     #do not change it
+    plot_options.SetSketchPadLineWidth(pcbnew.FromMM(0.1))
+
+    plot_options.SetAutoScale(False)        #do not change it
+    plot_options.SetScale(1)                #do not change it
+    plot_options.SetMirror(False)
+    plot_options.SetUseGerberAttributes(True)
+    plot_options.SetIncludeGerberNetlistInfo(True)
+    plot_options.SetUseGerberProtelExtensions(False)
+    plot_options.SetUseAuxOrigin(True)
+
+    # This by gerbers only
+    plot_options.SetSubtractMaskFromSilk(False)
+    # Disable plot pad holes
+    plot_options.SetDrillMarksType( pcbnew.DRILL_MARKS_NO_DRILL_SHAPE )
+
+    # Skip plot pad NPTH when possible: when drill size and shape == pad size and shape
+    # usually sel to True for copper layers
+    plot_options.SetSkipPlotNPTH_Pads( False )
+    
+
+    # Create a plot plan, and export
+    with open(stackup_filename, "r", encoding="utf-8") as file:
+        try:
+            stackup_config = json.load(file)
+        except json.JSONDecodeError as error:
+            raise json.JSONDecodeError(f"JSON decoding of stackup failed at {error.lineno}:{error.colno}: {error.msg,}")
+
+    print(f"{stackup_config=}")
+    for layer in stackup_config["layers"]:
+        # Fetch the KiCAD layer definiton, if the layer is defined
+        if "kicad_layer" in layer:
+            kicad_layer = getattr(pcbnew, layer["kicad_layer"])
+            if kicad_layer <= pcbnew.B_Cu:
+                plot_options.SetSkipPlotNPTH_Pads( True )
+            else:
+                plot_options.SetSkipPlotNPTH_Pads( False )
+            name_suffix = layer["name"]
+            plot_controller.SetLayer(kicad_layer)
+            plot_controller.OpenPlotfile(
+                name_suffix,
+                pcbnew.PLOT_FORMAT_GERBER,
+            )
+            plot_controller.PlotLayer()
+            print( 'plot %s' % fromUTF8Text( plot_controller.GetPlotFileName() ) )
+
+def create_dir(path: str, cleanup: bool = False) -> None:
+    """
+    Creates a directory if it doesn't exist
+    WARNING: IF CLEANUP=TRUE THEN IT WILL DELETE
+    THE BRANCHES OF PATH, SEE DOCUMENTATION 
+    FOR shutil.rmtree BEFORE USING! 
+
+    :param path: <str> absolute path to dir
+    :param cleanup: <bool> 
+    """
+    directory_path = os.path.join(os.getcwd(), path)
+    if cleanup and os.path.exists(directory_path):
+        shutil.rmtree(directory_path)
+    if not os.path.exists(directory_path):
+        os.mkdir(directory_path)
+
 
 def main():
 
@@ -221,13 +314,84 @@ def main():
     create_kicad_board(antenna, pcb, center_x_mm, center_y_mm)
 
     # Save the KiCAD board
-    filename = os.path.dirname(os.path.abspath(__file__)) + "/kicad/patch_antenna.kicad_pcb"
-    print(f"Saving board to {filename}")
+    pcb_dir = os.path.dirname(os.path.abspath(__file__)) + "/kicad/"
+    # Create the dir if it doesn't exist:
+    if not os.path.exists(pcb_dir):
+        os.makedirs(pcb_dir)
+    kicad_pcb_filename = pcb_dir + "patch_antenna.kicad_pcb"
+    print(f"Saving board to {kicad_pcb_filename}")
     pcbnew.SaveBoard(
-        aFileName = filename, 
+        aFileName = kicad_pcb_filename, 
         aBoard = pcb,
     )
 
+    # Export the gerber:
+    gerber_dir = os.path.dirname(os.path.abspath(__file__)) + "/kicad/gerber/"
+    # Create the dir if it doesn't exist:
+    if not os.path.exists(gerber_dir):
+        os.makedirs(gerber_dir)
+    stackup_file = os.path.dirname(os.path.abspath(__file__)) + "/stackup.json"
+    export_gerbers(kicad_pcb_filename, gerber_dir, stackup_file, "patch_antenna")
+
+
+    # Open and parse the config:
+    config_filename = os.path.dirname(os.path.abspath(__file__)) + "/config.json"
+    with open(config_filename, "r", encoding="utf-8") as file:
+        try:
+            config = json.load(file)
+        except json.JSONDecodeError as error:
+            print(f"JSON decoding failed at {error.lineno}:{error.colno}: {error.msg,}")
+            return
+    # Create the gerber2ems config based on the config read from the json file
+    # Set the args parameter to None for now. 
+    gerber2ems_config = Config(config, None)
+
+    # Create a temporary base directory:
+    ems_base_dir = os.path.dirname(os.path.abspath(__file__)) + "/ems/"
+    geometry_dir = ems_base_dir + "geometry/"
+    sim_dir = ems_base_dir + "geometry/"
+    result_dir = ems_base_dir + "geometry/"
+    create_dir(ems_base_dir, cleanup=False)
+    
+    print("Creating geometry")
+    create_dir(geometry_dir, cleanup=True)
+    sim = Simulation()
+    # Get the stackup filename. Located parallell to this file.
+    
+    importer.import_stackup(filename=stackup_file)
+    #importer.process_gbrs_to_pngs()
+
+    top_layer_name = Config.get().get_metals()[0].file
+    (width, height) = importer.get_dimensions(top_layer_name + ".png")
+    Config.get().pcb_height = height
+    Config.get().pcb_width = width
+
+    sim.create_materials()
+    sim.add_gerbers()
+    sim.add_mesh()
+    sim.add_substrates()
+    if Config.get().arguments.export_field:
+        sim.add_dump_boxes()
+    sim.set_boundary_conditions(pml=False)
+    sim.add_vias()
+    # Add the ports
+    sim.ports = []
+    importer.import_port_positions()
+
+    for index, port_config in enumerate(Config.get().ports):
+        sim.add_msl_port(port_config, index, index == None)
+    sim.save_geometry()
+
+    print("Running simulation")
+    create_dir(sim_dir, cleanup=True)
+    # Start with a single thread. 
+    # TODO: Get this from the config later on..
+    simulate(threads=1) 
+
+    print("Postprocessing")
+    create_dir(result_dir, cleanup=True)
+    sim = Simulation()
+    postprocess(sim)
 
 
 if __name__ == "__main__":
