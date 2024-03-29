@@ -1,0 +1,40 @@
+{
+    "layers": [
+        {
+            "kicad_layer": "F_Cu",
+            "name": "F_Cu",
+            "type": "copper",
+            "color": null,
+            "thickness": 0.035,
+            "material": null,
+            "epsilon": null,
+            "lossTangent": null
+        },
+        {
+            "kicad_layer": "B_Cu",
+            "name": "B_Cu",
+            "type": "copper",
+            "color": null,
+            "thickness": 0.035,
+            "material": null,
+            "epsilon": null,
+            "lossTangent": null
+        },
+        {
+            "name": "dielectric 1",
+            "type": "core",
+            "color": null,
+            "thickness": 0.2,
+            "material": "FR4",
+            "epsilon": 4.5,
+            "lossTangent": 0.02
+        },
+        {
+            "kicad_layer": "Edge_Cuts",
+            "name": "Edge_Cuts",
+            "type": null,
+            "thickness": null
+        }
+    ],
+    "format_version": "1.0"
+}
