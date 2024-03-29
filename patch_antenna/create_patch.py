@@ -251,7 +251,6 @@ def export_gerbers(kicad_pcb_filename, output_dir, stackup_filename, project_nam
         except json.JSONDecodeError as error:
             raise json.JSONDecodeError(f"JSON decoding of stackup failed at {error.lineno}:{error.colno}: {error.msg,}")
 
-    print(f"{stackup_config=}")
     for layer in stackup_config["layers"]:
         # Fetch the KiCAD layer definiton, if the layer is defined
         if "kicad_layer" in layer:
@@ -268,6 +267,34 @@ def export_gerbers(kicad_pcb_filename, output_dir, stackup_filename, project_nam
             )
             plot_controller.PlotLayer()
             print( 'plot %s' % fromUTF8Text( plot_controller.GetPlotFileName() ) )
+
+    drlwriter = pcbnew.EXCELLON_WRITER(pcb)
+    drlwriter.SetMapFileFormat(pcbnew.PLOT_FORMAT_PDF)
+
+    mirror = False
+    minimalHeader = False
+    offset = pcbnew.VECTOR2I(0,0)
+    # False to generate 2 separate drill files (one for plated holes, one for non plated holes)
+    # True to generate only one drill file
+    mergeNPTH = False
+    drlwriter.SetOptions( mirror, minimalHeader, offset, mergeNPTH )
+
+    metricFmt = True
+    drlwriter.SetFormat( metricFmt )
+
+    genDrl = True
+    genMap = True
+    print( 'create drill and map files in %s' % fromUTF8Text( plot_controller.GetPlotFileName() ) )
+    drlwriter.CreateDrillandMapFilesSet( plot_controller.GetPlotDirName(), genDrl, genMap )
+
+    # One can create a text file to report drill statistics
+    rptfn = plot_controller.GetPlotDirName() + 'drill_report.rpt'
+    print( 'report: %s' % fromUTF8Text( rptfn ) )
+    drlwriter.GenDrillReportFile( rptfn )
+
+    plot_controller.ClosePlot()
+
+    
 
 def create_dir(path: str, cleanup: bool = False) -> None:
     """
@@ -326,40 +353,50 @@ def main():
     )
 
     # Export the gerber:
-    gerber_dir = os.path.dirname(os.path.abspath(__file__)) + "/kicad/gerber/"
+    gerber_dir = os.path.dirname(os.path.abspath(__file__)) + "/fab"
     # Create the dir if it doesn't exist:
     if not os.path.exists(gerber_dir):
         os.makedirs(gerber_dir)
-    stackup_file = os.path.dirname(os.path.abspath(__file__)) + "/stackup.json"
+    stackup_file = gerber_dir + "/stackup.json"
     export_gerbers(kicad_pcb_filename, gerber_dir, stackup_file, "patch_antenna")
 
-
     # Open and parse the config:
-    config_filename = os.path.dirname(os.path.abspath(__file__)) + "/config.json"
+    config_filename = gerber_dir + "/config.json"
     with open(config_filename, "r", encoding="utf-8") as file:
         try:
             config = json.load(file)
         except json.JSONDecodeError as error:
             print(f"JSON decoding failed at {error.lineno}:{error.colno}: {error.msg,}")
             return
+        
     # Create the gerber2ems config based on the config read from the json file
     # Set the args parameter to None for now. 
-    gerber2ems_config = Config(config, None)
-
-    # Create a temporary base directory:
+    class dummyArgs:
+        pass
+    args_dummy = dummyArgs()
+    setattr(args_dummy, "debug", False)
+    setattr(args_dummy, "export_field", True)
+    gerber2ems_config = Config(config, args_dummy)
+    # Overide the configs default directories:
+    
     ems_base_dir = os.path.dirname(os.path.abspath(__file__)) + "/ems/"
     geometry_dir = ems_base_dir + "geometry/"
-    sim_dir = ems_base_dir + "geometry/"
-    result_dir = ems_base_dir + "geometry/"
+    sim_dir = ems_base_dir + "sim/"
+    result_dir = ems_base_dir + "results/"
     create_dir(ems_base_dir, cleanup=False)
-    
-    print("Creating geometry")
     create_dir(geometry_dir, cleanup=True)
+    create_dir(sim_dir, cleanup=True)
+    create_dir(result_dir, cleanup=True)
+    gerber2ems_config.base_dir = ems_base_dir
+    gerber2ems_config.geometry_dir = geometry_dir
+    gerber2ems_config.simulation_dir = sim_dir
+    gerber2ems_config.results_dir = result_dir
+    gerber2ems_config.fab_dir = gerber_dir
     sim = Simulation()
     # Get the stackup filename. Located parallell to this file.
     
-    importer.import_stackup(filename=stackup_file)
-    #importer.process_gbrs_to_pngs()
+    importer.import_stackup()
+    importer.process_gbrs_to_pngs()
 
     top_layer_name = Config.get().get_metals()[0].file
     (width, height) = importer.get_dimensions(top_layer_name + ".png")
@@ -383,13 +420,13 @@ def main():
     sim.save_geometry()
 
     print("Running simulation")
-    create_dir(sim_dir, cleanup=True)
+    
     # Start with a single thread. 
     # TODO: Get this from the config later on..
     simulate(threads=1) 
 
     print("Postprocessing")
-    create_dir(result_dir, cleanup=True)
+    
     sim = Simulation()
     postprocess(sim)
 

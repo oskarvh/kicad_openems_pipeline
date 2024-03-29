@@ -40,10 +40,15 @@ sudo python3 -m pip install --upgrade pip
 # Install python deps:
 sudo python3 -m pip install vtk scipy matplotlib h5py
 
+# Install gerber2ems dependencies:
+sudo apt install gerbv
+
+# Optional, but nice:
+sudo apt install paraview
 ```
 
 ## 1.3. Install gerber2ems
-This project uses Antmicro's `gerber2ems` module to convert gerber files to a format that can be opened by OpenEMS. ASsuming the submodules have been fetched, the package needs to be installed:
+This project uses Antmicro's `gerber2ems` module to convert gerber files to a format that can be opened by OpenEMS. Assuming the submodules have been fetched, the package needs to be installed:
 ```
 # cd into gerber2ems
 cd <path to where you cloned the repo>/gerber2ems
