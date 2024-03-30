@@ -10,6 +10,7 @@ import tempfile
 import json
 import shutil
 import sys
+from typing import Any, Optional
 
 # Extended libs
 import pcbnew
@@ -81,6 +82,8 @@ def create_kicad_board(antenna, pcb, center_x_mm, center_y_mm):
         )
     )
     gnd_plane.SetLayer(pcbnew.B_Cu)
+    # Set netclass:
+    gnd_plane.SetNet("GND")
     pcb.Add(gnd_plane)
 
     # Create the patch on the top. 
@@ -198,6 +201,22 @@ def create_kicad_board(antenna, pcb, center_x_mm, center_y_mm):
     feedline_mask.SetLayer(pcbnew.F_Mask)
     pcb.Add(feedline_mask)
 
+    # Add the simulation port
+    footprint = pcbnew.FOOTPRINT(pcb)
+    footprint.SetReference("SP1")   # Simulation ports must be SP_xxx
+    # Set the reference to the end of the feedline
+    sp1_y = feedline_start_y
+    sp1_x = center_x_mm
+    # Set the reference (silk layer) relative to the footprint
+    footprint.Reference().SetPos(pcbnew.VECTOR2I_MM(0,-2))
+    footprint.SetExcludedFromPosFiles(False)
+    footprint.SetValue("Simulation_Port")
+    pcb.Add(footprint)# add it to our pcb
+    mod_pos = pcbnew.VECTOR2I_MM(sp1_x,sp1_y)
+    footprint.SetPosition(mod_pos)
+
+
+
 def fromUTF8Text( afilename ):
     if sys.version_info < (3, 0):
         return afilename.encode()
@@ -266,7 +285,7 @@ def export_gerbers(kicad_pcb_filename, output_dir, stackup_filename, project_nam
                 pcbnew.PLOT_FORMAT_GERBER,
             )
             plot_controller.PlotLayer()
-            print( 'plot %s' % fromUTF8Text( plot_controller.GetPlotFileName() ) )
+            #print( 'plot %s' % fromUTF8Text( plot_controller.GetPlotFileName() ) )
 
     drlwriter = pcbnew.EXCELLON_WRITER(pcb)
     drlwriter.SetMapFileFormat(pcbnew.PLOT_FORMAT_PDF)
@@ -284,16 +303,44 @@ def export_gerbers(kicad_pcb_filename, output_dir, stackup_filename, project_nam
 
     genDrl = True
     genMap = True
-    print( 'create drill and map files in %s' % fromUTF8Text( plot_controller.GetPlotFileName() ) )
+    #print( 'create drill and map files in %s' % fromUTF8Text( plot_controller.GetPlotFileName() ) )
     drlwriter.CreateDrillandMapFilesSet( plot_controller.GetPlotDirName(), genDrl, genMap )
 
-    # One can create a text file to report drill statistics
-    rptfn = plot_controller.GetPlotDirName() + 'drill_report.rpt'
-    print( 'report: %s' % fromUTF8Text( rptfn ) )
-    drlwriter.GenDrillReportFile( rptfn )
 
     plot_controller.ClosePlot()
 
+def export_pos(kicad_pcb_filename, csv_filename):
+    """
+    Function to export the position file. 
+    """
+    # Load the board from the filename
+    pcb = pcbnew.LoadBoard(kicad_pcb_filename)
+    plot_exporter = pcbnew.PLACE_FILE_EXPORTER(
+        aBoard = pcb, 
+        aUnitsMM = True, # Use mm as units
+        aOnlySMD = False, # Export more than SMD
+        aExcludeAllTH = False, # Don't exclude TH
+        aExcludeDNP = False, # Exlude DNP (do not place) components
+        aTopSide= True, # Export top side components
+        aBottomSide= True, # Export bottom side components
+        aFormatCSV=True, # Export as .csv
+        aUseAuxOrigin= True, # Aux origin used for gerbers as well
+        aNegateBottomX=False, # Do not use negative x on bottom layer
+    )
+    # Generate file:
+    print(f"{plot_exporter.GenPositionData()=}")
+    # GenPositionData gives the csv file as a string
+    pos_data = plot_exporter.GenPositionData()
+    # Condition the string to look more like a csv file.
+    pos_data = pos_data.splitlines()
+    with open(csv_filename, "w") as f:
+        for line in pos_data:
+            if line.startswith("#"):
+                continue
+            f.write(line.replace("\t", ",") + "\n")
+    
+    
+    
     
 
 def create_dir(path: str, cleanup: bool = False) -> None:
@@ -359,6 +406,8 @@ def main():
         os.makedirs(gerber_dir)
     stackup_file = gerber_dir + "/stackup.json"
     export_gerbers(kicad_pcb_filename, gerber_dir, stackup_file, "patch_antenna")
+    pos_filename = gerber_dir + "/patch_antenna-pos.csv"
+    export_pos(kicad_pcb_filename, pos_filename)
 
     # Open and parse the config:
     config_filename = gerber_dir + "/config.json"
@@ -397,7 +446,7 @@ def main():
     
     importer.import_stackup()
     importer.process_gbrs_to_pngs()
-
+    
     top_layer_name = Config.get().get_metals()[0].file
     (width, height) = importer.get_dimensions(top_layer_name + ".png")
     Config.get().pcb_height = height
@@ -414,7 +463,6 @@ def main():
     # Add the ports
     sim.ports = []
     importer.import_port_positions()
-
     for index, port_config in enumerate(Config.get().ports):
         sim.add_msl_port(port_config, index, index == None)
     sim.save_geometry()
@@ -423,13 +471,66 @@ def main():
     
     # Start with a single thread. 
     # TODO: Get this from the config later on..
-    simulate(threads=1) 
+    simulate(threads=8) 
 
     print("Postprocessing")
     
     sim = Simulation()
     postprocess(sim)
 
+def add_ports(sim: Simulation, excited_port_number: Optional[int] = None) -> None:
+    """Add ports for simulation."""
+    #logger.info("Adding ports")
+
+    sim.ports = []
+    importer.import_port_positions()
+
+    for index, port_config in enumerate(Config.get().ports):
+        sim.add_msl_port(port_config, index, index == excited_port_number)
+
+def simulate(threads: None | int = None) -> None:
+    """Run the simulation."""
+    for index, port in enumerate(Config.get().ports):
+        if port.excite:
+            sim = Simulation()
+            importer.import_stackup()
+            sim.create_materials()
+            sim.set_excitation()
+            #logging.info("Simulating with excitation on port #%i", index)
+            sim.load_geometry()
+            add_ports(sim, index)
+            sim.run(index, threads=threads)
+
+def add_virtual_ports(sim: Simulation) -> None:
+    """Add virtual ports needed for data postprocessing due to openEMS api design."""
+    print("Adding virtual ports")
+    for port_config in Config.get().ports:
+        sim.add_virtual_port(port_config)
+
+def postprocess(sim: Simulation) -> None:
+    """Postprocess data from the simulation."""
+    if len(sim.ports) == 0:
+        add_virtual_ports(sim)
+
+    frequencies = np.linspace(Config.get().start_frequency, Config.get().stop_frequency, 1001)
+    post = Postprocesor(frequencies, len(Config.get().ports))
+    impedances = np.array([p.impedance for p in Config.get().ports])
+    post.add_impedances(impedances)
+
+    for index, port in enumerate(Config.get().ports):
+        if port.excite:
+            reflected, incident = sim.get_port_parameters(index, frequencies)
+            for i, _ in enumerate(Config.get().ports):
+                post.add_port_data(i, index, incident[i], reflected[i])
+
+    post.process_data()
+    post.save_to_file()
+    post.render_s_params()
+    post.render_impedance()
+    post.render_smith()
+    post.render_diff_pair_s_params()
+    post.render_diff_impedance()
+    post.render_trace_delays()
 
 if __name__ == "__main__":
     main()
