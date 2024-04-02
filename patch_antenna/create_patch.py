@@ -41,7 +41,20 @@ def create_kicad_board(antenna, pcb, center_x_mm, center_y_mm):
     :param center_y_mm: <int> Y coordinate for center of board in mm 
     :return: <pcbnew board object> Resulting PCB object.
     """
-     # The calculated width is the side where the feed line enters. 
+    # Set the drill origin:
+    design_settings = pcb.GetDesignSettings()
+    # NOTE: for gerber2ems, the origin should always be the bottom left corner. 
+    design_settings.SetAuxOrigin(
+        pcbnew.VECTOR2I_MM(
+            center_x_mm - antenna.ground_plane_width/2, 
+            center_y_mm + antenna.ground_plane_length/2
+        )
+    )
+    pcb.StyleFromSettings(design_settings)
+    # Create two new nets:
+    gnd_net = pcbnew.NETINFO_ITEM(pcb, "GND")
+    antenna_net = pcbnew.NETINFO_ITEM(pcb, "ant")
+    # The calculated width is the side where the feed line enters. 
     # If we then have the feed line on the bottom, length = Y, Width = X 
     # Create a board outline, based on the patch_antenna.ground_plane_[length/width]
     outline = pcbnew.PCB_SHAPE(pcb)
@@ -83,7 +96,7 @@ def create_kicad_board(antenna, pcb, center_x_mm, center_y_mm):
     )
     gnd_plane.SetLayer(pcbnew.B_Cu)
     # Set netclass:
-    gnd_plane.SetNet("GND")
+    gnd_plane.SetNet(gnd_net)
     pcb.Add(gnd_plane)
 
     # Create the patch on the top. 
@@ -328,7 +341,6 @@ def export_pos(kicad_pcb_filename, csv_filename):
         aNegateBottomX=False, # Do not use negative x on bottom layer
     )
     # Generate file:
-    print(f"{plot_exporter.GenPositionData()=}")
     # GenPositionData gives the csv file as a string
     pos_data = plot_exporter.GenPositionData()
     # Condition the string to look more like a csv file.
@@ -446,9 +458,11 @@ def main():
     
     importer.import_stackup()
     importer.process_gbrs_to_pngs()
-    
+    print(f"{Config.get().layers=}")
+    # Getting the metals for the outline makes no sense. 
     top_layer_name = Config.get().get_metals()[0].file
     (width, height) = importer.get_dimensions(top_layer_name + ".png")
+    print(f"{width=}, {height=}")
     Config.get().pcb_height = height
     Config.get().pcb_width = width
 
@@ -464,6 +478,17 @@ def main():
     sim.ports = []
     importer.import_port_positions()
     for index, port_config in enumerate(Config.get().ports):
+        print(f"{index=}")
+        print(f"{dir(port_config)=}")
+        print(f"{port_config.dB_margin=}")
+        print(f"{port_config.direction=}")
+        print(f"{port_config.excite=}")
+        print(f"{port_config.layer=}")
+        print(f"{port_config.length=}")
+        print(f"{port_config.name=}")
+        print(f"{port_config.plane=}")
+        print(f"{port_config.position=}")
+        print(f"{port_config.width=}")
         sim.add_msl_port(port_config, index, index == None)
     sim.save_geometry()
 

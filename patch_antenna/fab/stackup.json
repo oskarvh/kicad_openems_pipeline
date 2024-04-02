@@ -14,7 +14,7 @@
             "name": "dielectric 1",
             "type": "core",
             "color": null,
-            "thickness": 0.2,
+            "thickness": 1.6,
             "material": "FR4",
             "epsilon": 4.5,
             "lossTangent": 0.02
@@ -32,7 +32,7 @@
         {
             "kicad_layer": "Edge_Cuts",
             "name": "Edge_Cuts",
-            "type": null,
+            "type": "other",
             "thickness": null
         }
     ],
