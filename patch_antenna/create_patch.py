@@ -14,15 +14,10 @@ from typing import Any, Optional
 
 # Extended libs
 import pcbnew
-from CSXCAD  import ContinuousStructure
-from openEMS import openEMS
-from openEMS.physical_constants import *
 from gerber2ems.simulation import Simulation
 from gerber2ems.postprocess import Postprocesor
 from gerber2ems.config import Config
 import gerber2ems.importer as importer
-
-Sim_Path = os.path.join(tempfile.gettempdir(), 'Simp_Patch')
 
 # Modules from this repo
 from patch_antenna_calculator.patch_antenna_calculator import (
@@ -43,11 +38,12 @@ def create_kicad_board(antenna, pcb, center_x_mm, center_y_mm):
     """
     # Set the drill origin:
     design_settings = pcb.GetDesignSettings()
+    edge_cut_offset_mm = 2
     # NOTE: for gerber2ems, the origin should always be the bottom left corner. 
     design_settings.SetAuxOrigin(
         pcbnew.VECTOR2I_MM(
-            center_x_mm - antenna.ground_plane_width/2, 
-            center_y_mm + antenna.ground_plane_length/2
+            center_x_mm - antenna.ground_plane_width/2 - edge_cut_offset_mm, 
+            center_y_mm + antenna.ground_plane_length/2 + edge_cut_offset_mm
         )
     )
     pcb.StyleFromSettings(design_settings)
@@ -63,45 +59,85 @@ def create_kicad_board(antenna, pcb, center_x_mm, center_y_mm):
     outline.SetPosition(pcbnew.VECTOR2I_MM(center_x_mm, center_y_mm))
     outline.SetStart(
         pcbnew.VECTOR2I_MM(
-            center_x_mm - antenna.ground_plane_width/2, 
-            center_y_mm - antenna.ground_plane_length/2,
+            center_x_mm - antenna.ground_plane_width/2 -edge_cut_offset_mm, 
+            center_y_mm - antenna.ground_plane_length/2 -edge_cut_offset_mm,
         )
     )
     outline.SetEnd(
         pcbnew.VECTOR2I_MM(
-            center_x_mm + antenna.ground_plane_width/2, 
-            center_y_mm + antenna.ground_plane_length/2,
+            center_x_mm + antenna.ground_plane_width/2+edge_cut_offset_mm, 
+            center_y_mm + antenna.ground_plane_length/2+edge_cut_offset_mm,
         )
     )
     outline.SetLayer(pcbnew.Edge_Cuts)
     outline.SetWidth(pcbnew.FromMM(0.1))
     pcb.Add(outline)
 
-    # Add the ground plane on the secondary side:
-    gnd_plane = pcbnew.PCB_SHAPE(pcb)
-    gnd_plane.SetShape(pcbnew.SHAPE_T_RECT)
-    gnd_plane.SetFilled(True)
-    gnd_plane.SetPosition(pcbnew.VECTOR2I_MM(center_x_mm, center_y_mm))
-    gnd_plane.SetStart(
-        pcbnew.VECTOR2I_MM(
-            center_x_mm - antenna.ground_plane_width/2, 
-            center_y_mm - antenna.ground_plane_length/2,
-        )
-    )
-    gnd_plane.SetEnd(
-        pcbnew.VECTOR2I_MM(
+    # Test: add ground plane as zone:
+    pts = [
+        # Start in top left corner
+        (
             center_x_mm + antenna.ground_plane_width/2, 
-            center_y_mm + antenna.ground_plane_length/2,
-        )
-    )
+            center_y_mm + antenna.ground_plane_length/2
+        ),
+        (
+            center_x_mm + antenna.ground_plane_width/2, 
+            center_y_mm - antenna.ground_plane_length/2
+        ),
+        (
+            center_x_mm - antenna.ground_plane_width/2, 
+            center_y_mm - antenna.ground_plane_length/2
+        ),
+        (
+            center_x_mm - antenna.ground_plane_width/2, 
+            center_y_mm + antenna.ground_plane_length/2
+        ),
+        (
+            center_x_mm + antenna.ground_plane_width/2, 
+            center_y_mm + antenna.ground_plane_length/2
+        ),
+
+    ]
+    # Convert points from floats to vectors
+    pts = [pcbnew.VECTOR2I_MM(x,y) for (x,y) in pts]
+    chain = pcbnew.SHAPE_LINE_CHAIN()
+    for (x,y) in pts:
+        chain.Append(x, y)
+    chain.SetClosed(True)
+    gnd_plane = pcbnew.ZONE(pcb)
     gnd_plane.SetLayer(pcbnew.B_Cu)
-    # Set netclass:
+    gnd_plane.AddPolygon( chain)
+    gnd_plane.SetIsFilled(True)
     gnd_plane.SetNet(gnd_net)
     pcb.Add(gnd_plane)
+    
+    if False:
+        # Add the ground plane on the secondary side:
+        gnd_plane = pcbnew.PCB_SHAPE(pcb)
+        gnd_plane.SetShape(pcbnew.SHAPE_T_RECT)
+        gnd_plane.SetFilled(True)
+        gnd_plane.SetPosition(pcbnew.VECTOR2I_MM(center_x_mm, center_y_mm))
+        gnd_plane.SetStart(
+            pcbnew.VECTOR2I_MM(
+                center_x_mm - antenna.ground_plane_width/2, 
+                center_y_mm - antenna.ground_plane_length/2,
+            )
+        )
+        gnd_plane.SetEnd(
+            pcbnew.VECTOR2I_MM(
+                center_x_mm + antenna.ground_plane_width/2, 
+                center_y_mm + antenna.ground_plane_length/2,
+            )
+        )
+        gnd_plane.SetLayer(pcbnew.B_Cu)
+        # Set netclass:
+        gnd_plane.SetNet(gnd_net)
+        pcb.Add(gnd_plane)
 
     # Create the patch on the top. 
     # This is a rectangular patch with inset. 
     # points(x,y) of the patch
+
     pts = [
         # Start in top left corner
         (center_x_mm - antenna.w/2, center_y_mm - antenna.l/2),
@@ -228,6 +264,8 @@ def create_kicad_board(antenna, pcb, center_x_mm, center_y_mm):
     mod_pos = pcbnew.VECTOR2I_MM(sp1_x,sp1_y)
     footprint.SetPosition(mod_pos)
 
+    
+
 
 
 def fromUTF8Text( afilename ):
@@ -246,7 +284,12 @@ def export_gerbers(kicad_pcb_filename, output_dir, stackup_filename, project_nam
     # In order to get the naming convention correct, we need to open 
     # the board from source:
     pcb = pcbnew.LoadBoard(kicad_pcb_filename)
-
+    filler = pcbnew.ZONE_FILLER(pcb)
+    filler.Fill(pcb.Zones())
+    pcbnew.SaveBoard(
+        aFileName = kicad_pcb_filename, 
+        aBoard = pcb,
+    )
     # Create the plot controller object based of the pcb, and get the plot options
     plot_controller = pcbnew.PLOT_CONTROLLER(pcb)
     plot_options = plot_controller.GetPlotOptions()
@@ -351,9 +394,6 @@ def export_pos(kicad_pcb_filename, csv_filename):
                 continue
             f.write(line.replace("\t", ",") + "\n")
     
-    
-    
-    
 
 def create_dir(path: str, cleanup: bool = False) -> None:
     """
@@ -432,6 +472,9 @@ def main():
         
     # Create the gerber2ems config based on the config read from the json file
     # Set the args parameter to None for now. 
+    # Overload the port width with antenna parameters:
+        print(f"{config['ports']}")
+    config["ports"][0]["width"] = antenna.feed_line_w*1000
     class dummyArgs:
         pass
     args_dummy = dummyArgs()
@@ -460,7 +503,7 @@ def main():
     importer.process_gbrs_to_pngs()
     print(f"{Config.get().layers=}")
     # Getting the metals for the outline makes no sense. 
-    top_layer_name = Config.get().get_metals()[0].file
+    top_layer_name = Config.get().get_metals()[1].file
     (width, height) = importer.get_dimensions(top_layer_name + ".png")
     print(f"{width=}, {height=}")
     Config.get().pcb_height = height
@@ -490,6 +533,7 @@ def main():
         print(f"{port_config.position=}")
         print(f"{port_config.width=}")
         sim.add_msl_port(port_config, index, index == None)
+        #sim.add_virtual_port(port_config)
     sim.save_geometry()
 
     print("Running simulation")

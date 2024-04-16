@@ -8,7 +8,8 @@
             "thickness": 0.035,
             "material": null,
             "epsilon": null,
-            "lossTangent": null
+            "lossTangent": null,
+            "is_plane" : false
         },
         {
             "name": "dielectric 1",
@@ -27,7 +28,8 @@
             "thickness": 0.035,
             "material": null,
             "epsilon": null,
-            "lossTangent": null
+            "lossTangent": null,
+            "is_plane" : true
         },
         {
             "kicad_layer": "Edge_Cuts",

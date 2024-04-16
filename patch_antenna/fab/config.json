@@ -1,10 +1,10 @@
 {
     "format_version": "1.1",
     "frequency": {
-        "start": 1e9,
-        "stop": 5e9
+        "start": 1000e6,
+        "stop": 5000e6
     },
-    "max_steps": 1e4,
+    "max_steps": 2e4,
     "via": {
         "filling_epsilon": 1,
         "plating_thickness": 50
