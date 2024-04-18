@@ -4,3 +4,6 @@
 [submodule "gerber2ems"]
 	path = gerber2ems
 	url = git@github.com:oskarvh/gerber2ems.git
+[submodule "pyems_patch/patch_antenna_calculator"]
+	path = pyems_patch/patch_antenna_calculator
+	url = git@github.com:oskarvh/patch_antenna_calculator.git
